@@ -85,6 +85,7 @@ concrete implementations of `PolicyChecker`, `AuditWriter`, and `PeerManager`.
 ```
 shim/
 ├── shim.go            Sandbox compositor — New / Start / Close / AddPeer
+├── server.go          Server — tsnet-style embeddable node: Dial / Listen / AddPeer
 ├── netstack_core.go   Netstack struct — user-space TCP/IP
 ├── netstack.go        NetstackOption + With* functions
 ├── forward.go         ForwardListener — overlay inbound relay
@@ -93,6 +94,29 @@ shim/
 ├── audit.go           AuditWriter interface + AuditEvent struct
 ├── wireguard.go       WireGuardEndpoint / WireGuardBind / PeerManager interfaces
 └── internal/test/     Mock implementations for testing
+```
+
+**`Server`** — a tsnet-style alternative to `Sandbox` for callers that want
+to embed overlay connectivity directly, without a local SOCKS5 proxy or
+port-forward relay. `Server` exposes `Dial` and `Listen` as ordinary
+`net.Conn`/`net.Listener` values backed by the netstack; the caller decides
+what to do with each connection instead of the shim relaying it somewhere.
+Use `Server` when the host process itself is the thing that should
+dial/accept overlay connections (e.g. an app embedding overlay connectivity
+without a kernel TUN device); use `Sandbox` when you need a local
+SOCKS5/forward relay in front of a workload process you don't control.
+
+```go
+srv, _ := shim.NewServer("10.50.0.1", &WgAdapter{dev: wgDevice})
+srv.AddPeer(peerPubKey, allowedIPs, "1.2.3.4:51820")
+
+conn, _ := srv.Dial(ctx, "tcp", "10.50.0.2:8080")
+
+ln, _ := srv.Listen("tcp", "10.50.0.1:8080")
+for {
+    conn, _ := ln.Accept()
+    go handle(conn)
+}
 ```
 
 ---
