@@ -15,8 +15,11 @@
 package shim
 
 import (
+	"context"
 	"fmt"
 	"net"
+
+	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
 )
 
 // Server is a tsnet-style embeddable network node: a Netstack plus a
@@ -62,6 +65,29 @@ func (s *Server) RemovePeer(pubKey [32]byte) error {
 	}
 	return s.peers.RemovePeer(pubKey)
 }
+
+// Dial dials a remote address through the user-space netstack. See
+// Netstack.DialContext for supported network values ("tcp", "tcp4",
+// "udp", "udp4").
+func (s *Server) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	return s.ns.DialContext(ctx, network, addr)
+}
+
+// Listen creates a TCP listener on the netstack at addr. network must be
+// "tcp" or "tcp4".
+func (s *Server) Listen(network, addr string) (net.Listener, error) {
+	switch network {
+	case "tcp", "tcp4":
+		return s.ns.ListenTCP(addr)
+	default:
+		return nil, fmt.Errorf("unsupported network: %s", network)
+	}
+}
+
+// Channel returns the channel endpoint for wireguard-go attachment — the
+// caller's WireGuard bridge (e.g. a tun.Device adapter) reads outbound
+// packets from and injects inbound packets into this endpoint.
+func (s *Server) Channel() *channel.Endpoint { return s.ns.Channel() }
 
 // Close destroys the underlying netstack.
 func (s *Server) Close() error {
